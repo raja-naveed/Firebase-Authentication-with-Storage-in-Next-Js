@@ -6,6 +6,7 @@ import {
   uploadBytes,
   updateMetadata,
   getMetadata,
+  deleteObject,
 } from "firebase/storage";
 import { v4 } from "uuid";
 import { storage, auth } from "@/firebase/firebase";
@@ -14,50 +15,88 @@ function ImageUpload() {
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState([]);
 
-  const handleChange = (e) => setFile(e.target.files[0]);
+  const handleChange = (e) => setFile([...e.target.files]);
+  const fileId = v4();
 
   const handleUpload = () => {
     console.log("Clicked");
-    if (file !== null) {
+    if (file.length > 0) { // Check if there are selected files
       const allowedFileTypes = [
         "image/jpeg",
         "image/png",
         "image/gif",
         "application/pdf",
       ];
-      if (!allowedFileTypes.includes(file.type)) {
-        alert("Please select a valid file (JPEG, PNG, GIF, or PDF).");
-        return;
-      }
-
-      const fileId = v4(); 
-      const fileRef = ref(storage, `files/${fileId}`);
-
-      uploadBytes(fileRef, file)
-        .then((snapshot) => {
-          console.log("File uploaded:", snapshot);
-
-          const user = auth.currentUser;
-          if (user) {
-            const metadata = {
-              customMetadata: {
-                uploadedBy: user.uid,
-              },
-            };
-            updateMetadata(fileRef, metadata).then(() => {
-              console.log("File metadata updated with user UID:", user.uid);
-
-              getDownloadURL(fileRef).then((url) => {
-                setFileUrl((data) => [...data, { url, type: file.type }]);
-                setFile(null); 
+  
+      file.forEach((selectedFile) => {
+        if (!allowedFileTypes.includes(selectedFile.type)) {
+          alert("Please select a valid file (JPEG, PNG, GIF, or PDF).");
+          return;
+        }
+  
+        const fileId = v4();
+        const fileRef = ref(storage, `files/${fileId}`);
+  
+        uploadBytes(fileRef, selectedFile)
+          .then((snapshot) => {
+            console.log("File uploaded:", snapshot);
+  
+            const user = auth.currentUser;
+            if (user) {
+              const metadata = {
+                customMetadata: {
+                  uploadedBy: user.uid,
+                },
+              };
+              updateMetadata(fileRef, metadata).then(() => {
+                console.log("File metadata updated with user UID:", user.uid);
+  
+                getDownloadURL(fileRef).then((url) => {
+                  setFileUrl((data) => [
+                    ...data,
+                    { url, type: selectedFile.type, id: fileId },
+                  ]);
+                });
               });
-            });
-          }
-        })
-        .catch((error) => {
-          console.error("Error uploading file:", error);
-        });
+            }
+          })
+          .catch((error) => {
+            console.error("Error uploading file:", error);
+          });
+      });
+  
+      setFile([]); // Clear the selected files after uploading
     }
+  };
+  
+
+  const handleDeleteFile = (indexToDelete) => {
+    // Retrieve the file reference from storage using the indexToDelete
+    const fileToDelete = fileUrl[indexToDelete];
+
+    // Extract the fileId from the fileToDelete object
+    const fileIdToDelete = fileToDelete.id;
+
+    // Create a reference to the file in Firebase Storage
+    const fileRef = ref(storage, `files/${fileIdToDelete}`); // Use the correct fileId
+
+    // Delete the file from Firebase Storage
+    deleteObject(fileRef)
+      .then(() => {
+        console.log("File deleted successfully.");
+
+        // Create a copy of the current fileUrl array
+        const updatedFileUrl = [...fileUrl];
+
+        // Remove the file at the specified index
+        updatedFileUrl.splice(indexToDelete, 1);
+
+        // Update the state with the modified array
+        setFileUrl(updatedFileUrl);
+      })
+      .catch((error) => {
+        console.error("Error deleting file:", error);
+      });
   };
 
   useEffect(() => {
@@ -70,7 +109,7 @@ function ImageUpload() {
           getMetadata(item).then((metadata) => {
             if (user && metadata.customMetadata.uploadedBy === user.uid) {
               getDownloadURL(item).then((url) => {
-                urls.push({ url, type: metadata.contentType });
+                urls.push({ url, type: metadata.contentType, id: item.name });
                 setFileUrl(urls);
               });
             }
@@ -83,11 +122,8 @@ function ImageUpload() {
   }, []);
 
   return (
-    <div className="bg-gray-100 min-h-screen flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-semibold">File Upload</h1>
-        </div>
+    <div className=" flex items-center w-full flex-col justify-center">
+      <div className="md:w-1/2 mb-6 md:mb-0">
         <div className="mb-6">
           <label
             htmlFor="file"
@@ -99,26 +135,32 @@ function ImageUpload() {
             type="file"
             id="file"
             onChange={handleChange}
-            className="mt-1 p-2 w-full border rounded-md"
+            className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             accept="image/jpeg, image/png, image/gif, application/pdf"
+            multiple // Add the multiple attribute here
           />
         </div>
         <div className="mb-6">
           <button
             onClick={handleUpload}
-            className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none"
+            className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             Upload
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          {fileUrl.map((file, index) => (
-            <div key={index}>
+      </div>
+      <div className="md:w-1/2 grid  gap-4">
+        {fileUrl.map((file, index) => (
+          <div
+            key={index}
+            className="mb-4 p-4 border border-gray-200 rounded-lg"
+          >
+            <div className="relative">
               {file.type.startsWith("image/") ? (
                 <img
                   src={file.url}
                   alt={`Image ${index}`}
-                  className="rounded-lg max-h-96 mx-auto"
+                  className="rounded-lg mx-auto"
                 />
               ) : (
                 <embed
@@ -127,9 +169,15 @@ function ImageUpload() {
                   className="w-full h-64"
                 />
               )}
+              <button
+                onClick={() => handleDeleteFile(index)}
+                className="absolute top-0 right-0 bg-red-500 text-white py-1 px-2 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                *{" "}
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -17,9 +17,10 @@ export default function App() {
       }
     });
 
+
     // Clean up the listener when the component unmounts.
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   return (
     <div>

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  updateProfile 
 } from "firebase/auth";
 import { auth } from "@/firebase/firebase";
 import { useRouter } from "next/router";
@@ -10,13 +11,18 @@ import { useRouter } from "next/router";
 function RegisterAndLogin() {
   const [login, setLogin] = useState(false);
     const history = useRouter();
-  const handleSubmit = (e, type) => {
+  const handleSubmit = async (e, type) => {
     e.preventDefault();
+    const name = e.target.name.value;
     const email = e.target.email.value;
     const password = e.target.password.value;
     if (type == "signup") {
-      createUserWithEmailAndPassword(auth, email, password)
+     await createUserWithEmailAndPassword(auth, email, password)
         .then((data) => {
+          const user = data.user;
+       updateProfile(user, {
+            displayName: name,
+          })
           history.push("/");
         })
         .catch((err) => {
@@ -24,9 +30,10 @@ function RegisterAndLogin() {
           setLogin(true);
         });
     } else {
-      signInWithEmailAndPassword(auth, email, password)
+     await signInWithEmailAndPassword(auth, email, password)
         .then((data) => {
           console.log(data, "authData");
+         
           history.push("/");
         })
         .catch((err) => {
@@ -47,6 +54,21 @@ function RegisterAndLogin() {
           </h1>
         </div>
         <form onSubmit={(e) => handleSubmit(e, login ? "signin" : "signup")}>
+        {!login && <div className="mb-4">
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Name
+            </label>
+            <input
+              type="name"
+              name="name"
+              id="name"
+              placeholder="Enter your Name"
+              className="mt-1 p-2 w-full border rounded-md"
+            />
+          </div>}
           <div className="mb-4">
             <label
               htmlFor="email"
